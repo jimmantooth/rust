@@ -1822,6 +1822,30 @@ let x: i32 = "I am not a number!";
 //      |
 //    type `i32` assigned to variable `x`
 ```
+
+Another situation in which this occurs is when you attempt to use the `try!`
+macro inside a function that does not return a `Result<T, E>`:
+
+```
+use std::fs::File;
+
+fn main() {
+    let mut f = try!(File::create("foo.txt"));
+}
+```
+
+This code gives an error like this:
+
+```text
+<std macros>:5:8: 6:42 error: mismatched types:
+ expected `()`,
+     found `core::result::Result<_, _>`
+ (expected (),
+     found enum `core::result::Result`) [E0308]
+```
+
+`try!` returns a `Result<T, E>`, and so the function must. But `main()` has
+`()` as its return type, hence the error.
 "##,
 
 E0309: r##"
@@ -2323,9 +2347,9 @@ register_diagnostics! {
     E0285, // overflow evaluation builtin bounds
     E0298, // mismatched types between arms
     E0299, // mismatched types between arms
-    E0300, // unexpanded macro
-    E0304, // expected signed integer constant
-    E0305, // expected constant
+    // E0300, // unexpanded macro
+    // E0304, // expected signed integer constant
+    // E0305, // expected constant
     E0311, // thing may not live long enough
     E0312, // lifetime of reference outlives lifetime of borrowed content
     E0313, // lifetime of borrowed pointer outlives lifetime of captured variable

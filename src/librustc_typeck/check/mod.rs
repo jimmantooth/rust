@@ -82,6 +82,7 @@ use self::TupleArgumentsFlag::*;
 
 use astconv::{self, ast_region_to_region, ast_ty_to_ty, AstConv, PathParamMode};
 use check::_match::pat_ctxt;
+use dep_graph::DepNode;
 use fmt_macros::{Parser, Piece, Position};
 use middle::astconv_util::prohibit_type_params;
 use middle::cstore::LOCAL_CRATE;
@@ -96,7 +97,7 @@ use middle::traits::{self, report_fulfillment_errors};
 use middle::ty::{GenericPredicates, TypeScheme};
 use middle::ty::{Disr, ParamTy, ParameterEnvironment};
 use middle::ty::{LvaluePreference, NoPreference, PreferMutLvalue};
-use middle::ty::{self, HasTypeFlags, RegionEscape, ToPolyTraitRef, Ty};
+use middle::ty::{self, ToPolyTraitRef, Ty};
 use middle::ty::{MethodCall, MethodCallee};
 use middle::ty::adjustment;
 use middle::ty::error::TypeError;
@@ -317,7 +318,7 @@ impl<'a, 'tcx> Inherited<'a, 'tcx> {
                                         body_id: ast::NodeId,
                                         value: &T)
                                         -> T
-        where T : TypeFoldable<'tcx> + HasTypeFlags
+        where T : TypeFoldable<'tcx>
     {
         let mut fulfillment_cx = self.infcx.fulfillment_cx.borrow_mut();
         assoc::normalize_associated_types_in(&self.infcx,
@@ -384,34 +385,33 @@ impl<'a, 'tcx> Visitor<'tcx> for CheckItemBodiesVisitor<'a, 'tcx> {
 
 pub fn check_wf_new(ccx: &CrateCtxt) {
     ccx.tcx.sess.abort_if_new_errors(|| {
-        let krate = ccx.tcx.map.krate();
         let mut visit = wfcheck::CheckTypeWellFormedVisitor::new(ccx);
-        krate.visit_all_items(&mut visit);
+        ccx.tcx.visit_all_items_in_krate(DepNode::WfCheck, &mut visit);
     });
 }
 
 pub fn check_item_types(ccx: &CrateCtxt) {
     ccx.tcx.sess.abort_if_new_errors(|| {
-        let krate = ccx.tcx.map.krate();
         let mut visit = CheckItemTypesVisitor { ccx: ccx };
-        krate.visit_all_items(&mut visit);
+        ccx.tcx.visit_all_items_in_krate(DepNode::TypeckItemType, &mut visit);
     });
 }
 
 pub fn check_item_bodies(ccx: &CrateCtxt) {
     ccx.tcx.sess.abort_if_new_errors(|| {
-        let krate = ccx.tcx.map.krate();
         let mut visit = CheckItemBodiesVisitor { ccx: ccx };
-        krate.visit_all_items(&mut visit);
+        ccx.tcx.visit_all_items_in_krate(DepNode::TypeckItemBody, &mut visit);
     });
 }
 
 pub fn check_drop_impls(ccx: &CrateCtxt) {
     ccx.tcx.sess.abort_if_new_errors(|| {
+        let _task = ccx.tcx.dep_graph.in_task(DepNode::Dropck);
         let drop_trait = match ccx.tcx.lang_items.drop_trait() {
             Some(id) => ccx.tcx.lookup_trait_def(id), None => { return }
         };
         drop_trait.for_each_impl(ccx.tcx, |drop_impl_did| {
+            let _task = ccx.tcx.dep_graph.in_task(DepNode::DropckImpl(drop_impl_did));
             if drop_impl_did.is_local() {
                 match dropck::check_drop_impl(ccx.tcx, drop_impl_did) {
                     Ok(()) => {}
@@ -1038,6 +1038,9 @@ fn report_cast_to_unsized_type<'a, 'tcx>(fcx: &FnCtxt<'a, 'tcx>,
                                          t_cast: Ty<'tcx>,
                                          t_expr: Ty<'tcx>,
                                          id: ast::NodeId) {
+    if t_cast.references_error() || t_expr.references_error() {
+        return;
+    }
     let tstr = fcx.infcx().ty_to_string(t_cast);
     let mut err = fcx.type_error_struct(span, |actual| {
         format!("cast to unsized type: `{}` as `{}`", actual, tstr)
@@ -1334,7 +1337,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                   substs: &Substs<'tcx>,
                                   value: &T)
                                   -> T
-        where T : TypeFoldable<'tcx> + HasTypeFlags
+        where T : TypeFoldable<'tcx>
     {
         let value = value.subst(self.tcx(), substs);
         let result = self.normalize_associated_types_in(span, &value);
@@ -1360,7 +1363,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
 
     fn normalize_associated_types_in<T>(&self, span: Span, value: &T) -> T
-        where T : TypeFoldable<'tcx> + HasTypeFlags
+        where T : TypeFoldable<'tcx>
     {
         self.inh.normalize_associated_types_in(span, self.body_id, value)
     }
@@ -3511,9 +3514,10 @@ fn check_expr_with_unifier<'a, 'tcx, F>(fcx: &FnCtxt<'a, 'tcx>,
         let t_cast = structurally_resolved_type(fcx, expr.span, t_cast);
         check_expr_with_expectation(fcx, e, ExpectCastableToType(t_cast));
         let t_expr = fcx.expr_ty(e);
+        let t_cast = fcx.infcx().resolve_type_vars_if_possible(&t_cast);
 
         // Eagerly check for some obvious errors.
-        if t_expr.references_error() {
+        if t_expr.references_error() || t_cast.references_error() {
             fcx.write_error(id);
         } else if !fcx.type_is_known_to_be_sized(t_cast, expr.span) {
             report_cast_to_unsized_type(fcx, expr.span, t.span, e.span, t_cast, t_expr, id);

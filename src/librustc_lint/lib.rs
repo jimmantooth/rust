@@ -38,6 +38,7 @@
 #![feature(staged_api)]
 #![feature(str_char)]
 
+#[macro_use]
 extern crate syntax;
 #[macro_use]
 extern crate rustc;
@@ -143,8 +144,9 @@ pub fn register_builtins(store: &mut lint::LintStore, sess: Option<&Session>) {
                     UNUSED_MUT, UNREACHABLE_CODE, UNUSED_MUST_USE,
                     UNUSED_UNSAFE, PATH_STATEMENTS, UNUSED_ATTRIBUTES);
 
-    add_lint_group!(sess, "future_incompatible",
-                    PRIVATE_IN_PUBLIC);
+    add_lint_group!(sess, FUTURE_INCOMPATIBLE,
+                    PRIVATE_IN_PUBLIC, INVALID_TYPE_PARAM_DEFAULT,
+                    MATCH_OF_UNIT_VARIANT_VIA_PAREN_DOTDOT);
 
     // We have one lint pass defined specially
     store.register_late_pass(sess, false, box lint::GatherNodeLevels);
@@ -153,4 +155,5 @@ pub fn register_builtins(store: &mut lint::LintStore, sess: Option<&Session>) {
     store.register_renamed("unknown_features", "unused_features");
 
     store.register_removed("unsigned_negation", "replaced by negate_unsigned feature gate");
+    store.register_removed("negate_unsigned", "cast a signed value instead");
 }

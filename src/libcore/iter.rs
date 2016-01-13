@@ -321,7 +321,6 @@ fn _assert_is_object_safe(_: &Iterator<Item=()>) {}
 ///
 /// [module-level documentation]: index.html
 /// [impl]: index.html#implementing-iterator
-#[lang = "iterator"]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_on_unimplemented = "`{Self}` is not an iterator; maybe try calling \
                             `.iter()` or a similar method"]
@@ -2132,7 +2131,7 @@ pub trait Iterator {
     /// ```
     #[unstable(feature = "iter_arith", reason = "bounds recently changed",
                issue = "27739")]
-    fn sum<S=<Self as Iterator>::Item>(self) -> S where
+    fn sum<S>(self) -> S where
         S: Add<Self::Item, Output=S> + Zero,
         Self: Sized,
     {
@@ -2157,7 +2156,7 @@ pub trait Iterator {
     /// ```
     #[unstable(feature="iter_arith", reason = "bounds recently changed",
                issue = "27739")]
-    fn product<P=<Self as Iterator>::Item>(self) -> P where
+    fn product<P>(self) -> P where
         P: Mul<Self::Item, Output=P> + One,
         Self: Sized,
     {

@@ -16,6 +16,9 @@
 
 use lint::{LintPass, LateLintPass, LintArray};
 
+// name of the future-incompatible group
+pub const FUTURE_INCOMPATIBLE: &'static str = "future_incompatible";
+
 declare_lint! {
     pub CONST_ERR,
     Warn,
@@ -124,6 +127,18 @@ declare_lint! {
     "detect private items in public interfaces not caught by the old implementation"
 }
 
+declare_lint! {
+    pub INVALID_TYPE_PARAM_DEFAULT,
+    Warn,
+    "type parameter default erroneously allowed in invalid location"
+}
+
+declare_lint! {
+    pub MATCH_OF_UNIT_VARIANT_VIA_PAREN_DOTDOT,
+    Warn,
+    "unit struct or enum variant erroneously allowed to match via path::ident(..)"
+}
+
 /// Does nothing as a lint pass, but registers some `Lint`s
 /// which are used by other parts of the compiler.
 #[derive(Copy, Clone)]
@@ -149,6 +164,8 @@ impl LintPass for HardwiredLints {
             TRIVIAL_CASTS,
             TRIVIAL_NUMERIC_CASTS,
             PRIVATE_IN_PUBLIC,
+            INVALID_TYPE_PARAM_DEFAULT,
+            MATCH_OF_UNIT_VARIANT_VIA_PAREN_DOTDOT,
             CONST_ERR
         )
     }

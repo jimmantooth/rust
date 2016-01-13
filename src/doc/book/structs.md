@@ -88,6 +88,35 @@ fn main() {
 }
 ```
 
+Your structure can still contain `&mut` pointers, which will let
+you do some kinds of mutation:
+
+```rust
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+struct PointRef<'a> {
+    x: &'a mut i32,
+    y: &'a mut i32,
+}
+
+fn main() {
+    let mut point = Point { x: 0, y: 0 };
+
+    {
+        let r = PointRef { x: &mut point.x, y: &mut point.y };
+
+        *r.x = 5;
+        *r.y = 6;
+    }
+
+    assert_eq!(5, point.x);
+    assert_eq!(6, point.y);
+}
+```
+
 # Update syntax
 
 A `struct` can include `..` to indicate that you want to use a copy of some
@@ -173,7 +202,7 @@ println!("length is {} inches", integer_length);
 ```
 
 As you can see here, you can extract the inner integer type through a
-destructuring `let`, just as with regular tuples. In this case, the
+destructuring `let`, as with regular tuples. In this case, the
 `let Inches(integer_length)` assigns `10` to `integer_length`.
 
 # Unit-like structs
@@ -194,7 +223,7 @@ This is rarely useful on its own (although sometimes it can serve as a
 marker type), but in combination with other features, it can become
 useful. For instance, a library may ask you to create a structure that
 implements a certain [trait][trait] to handle events. If you don’t have
-any data you need to store in the structure, you can just create a
+any data you need to store in the structure, you can create a
 unit-like `struct`.
 
 [trait]: traits.html

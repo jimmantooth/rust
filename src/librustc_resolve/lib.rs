@@ -72,7 +72,7 @@ use rustc_front::intravisit::{self, FnKind, Visitor};
 use rustc_front::hir;
 use rustc_front::hir::{Arm, BindByRef, BindByValue, BindingMode, Block};
 use rustc_front::hir::Crate;
-use rustc_front::hir::{Expr, ExprAgain, ExprBreak, ExprField};
+use rustc_front::hir::{Expr, ExprAgain, ExprBreak, ExprCall, ExprField};
 use rustc_front::hir::{ExprLoop, ExprWhile, ExprMethodCall};
 use rustc_front::hir::{ExprPath, ExprStruct, FnDecl};
 use rustc_front::hir::{ForeignItemFn, ForeignItemStatic, Generics};
@@ -122,6 +122,8 @@ enum SuggestionType {
 }
 
 pub enum ResolutionError<'a> {
+    /// error E0260: name conflicts with an extern crate
+    NameConflictsWithExternCrate(Name),
     /// error E0401: can't use type parameters from outer function
     TypeParametersFromOuterFunction,
     /// error E0402: cannot use an outer type parameter in this context
@@ -228,6 +230,14 @@ fn resolve_struct_error<'b, 'a: 'b, 'tcx: 'a>(resolver: &'b Resolver<'a, 'tcx>,
     }
 
     match resolution_error {
+        ResolutionError::NameConflictsWithExternCrate(name) => {
+            struct_span_err!(resolver.session,
+                             span,
+                             E0260,
+                             "the name `{}` conflicts with an external crate \
+                             that has been imported into this module",
+                             name)
+        }
         ResolutionError::TypeParametersFromOuterFunction => {
             struct_span_err!(resolver.session,
                              span,
@@ -433,7 +443,7 @@ fn resolve_struct_error<'b, 'a: 'b, 'tcx: 'a>(resolver: &'b Resolver<'a, 'tcx>,
                                            msg);
 
             match context {
-                UnresolvedNameContext::Other => {} // no help available
+                UnresolvedNameContext::Other => { } // no help available
                 UnresolvedNameContext::PathIsMod(id) => {
                     let mut help_msg = String::new();
                     let parent_id = resolver.ast_map.get_parent_node(id);
@@ -446,7 +456,6 @@ fn resolve_struct_error<'b, 'a: 'b, 'tcx: 'a>(resolver: &'b Resolver<'a, 'tcx>,
                                                    module = &*path,
                                                    ident = ident.node);
                             }
-
                             ExprMethodCall(ident, _, _) => {
                                 help_msg = format!("To call a function from the \
                                                     `{module}` module, use \
@@ -454,9 +463,15 @@ fn resolve_struct_error<'b, 'a: 'b, 'tcx: 'a>(resolver: &'b Resolver<'a, 'tcx>,
                                                    module = &*path,
                                                    ident = ident.node);
                             }
-
-                            _ => {} // no help available
+                            ExprCall(_, _) => {
+                                help_msg = format!("No function corresponds to `{module}(..)`",
+                                                   module = &*path);
+                            }
+                            _ => { } // no help available
                         }
+                    } else {
+                        help_msg = format!("Module `{module}` cannot be the value of an expression",
+                                           module = &*path);
                     }
 
                     if !help_msg.is_empty() {
@@ -1292,18 +1307,22 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
         }
     }
 
-    /// Checks that the names of external crates don't collide with other
-    /// external crates.
-    fn check_for_conflicts_between_external_crates(&self,
-                                                   module: &Module,
-                                                   name: Name,
-                                                   span: Span) {
+    /// Check that an external crate doesn't collide with items or other external crates.
+    fn check_for_conflicts_for_external_crate(&self, module: &Module, name: Name, span: Span) {
         if module.external_module_children.borrow().contains_key(&name) {
             span_err!(self.session,
                       span,
                       E0259,
                       "an external crate named `{}` has already been imported into this module",
                       name);
+        }
+        match module.children.borrow().get(&name) {
+            Some(name_bindings) if name_bindings.type_ns.defined() => {
+                resolve_error(self,
+                              name_bindings.type_ns.span().unwrap_or(codemap::DUMMY_SP),
+                              ResolutionError::NameConflictsWithExternCrate(name));
+            }
+            _ => {},
         }
     }
 
@@ -1313,12 +1332,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
                                                              name: Name,
                                                              span: Span) {
         if module.external_module_children.borrow().contains_key(&name) {
-            span_err!(self.session,
-                      span,
-                      E0260,
-                      "the name `{}` conflicts with an external crate that has been imported \
-                       into this module",
-                      name);
+            resolve_error(self, span, ResolutionError::NameConflictsWithExternCrate(name));
         }
     }
 

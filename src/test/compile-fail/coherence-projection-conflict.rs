@@ -1,4 +1,4 @@
-// Copyright 2015 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2016 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,11 +8,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Check that we cannot have two sequence repetitions in a row.
+use std::marker::PhantomData;
 
-macro_rules! foo {
-  ( $($a:expr)* $($b:tt)* ) => { }; //~ ERROR sequence repetition followed by another sequence
-  ( $($a:tt)* $($b:tt)* ) => { }; //~ ERROR sequence repetition followed by another sequence
+pub trait Foo<P> {}
+
+pub trait Bar {
+    type Output: 'static;
 }
 
-fn main() { }
+impl Foo<i32> for i32 { } //~ ERROR E0119
+
+impl<A:Bar> Foo<A::Output> for A { }
+
+impl Bar for i32 {
+    type Output = i32;
+}
+
+fn main() {}
